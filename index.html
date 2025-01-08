@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Forex Trade Calculator</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <!-- Custom CSS -->
+    <style>
+      .risk-high {
+        color: red;
+      }
+      .risk-medium {
+        color: orange;
+      }
+      .risk-low {
+        color: green;
+      }
+      .card {
+        margin-bottom: 20px;
+      }
+      body {
+        background-color: #f8f9fa;
+      }
+      .container {
+        max-width: 1200px;
+      }
+      .form-label {
+        font-weight: 500;
+      }
+      .result-value {
+        font-weight: 600;
+      }
+      #errors {
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container py-5">
+      <h1 class="text-center mb-4">Forex Trade Calculator</h1>
+      <div class="row">
+        <!-- Input Section -->
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header bg-primary text-white">
+              <h4 class="mb-0">Trade Parameters</h4>
+            </div>
+            <div class="card-body">
+              <form id="tradeForm">
+                <div class="mb-3">
+                  <label class="form-label">Trading Pair</label>
+                  <select class="form-select" id="tradingPair" required>
+                    <optgroup label="Major Pairs">
+                      <option value="EUR/USD">EUR/USD</option>
+                      <option value="GBP/USD">GBP/USD</option>
+                      <option value="USD/JPY">USD/JPY</option>
+                      <option value="USD/CHF">USD/CHF</option>
+                      <option value="USD/CAD">USD/CAD</option>
+                      <option value="AUD/USD">AUD/USD</option>
+                      <option value="NZD/USD">NZD/USD</option>
+                    </optgroup>
+                    <optgroup label="Metals">
+                      <option value="XAU/USD">GOLD (XAU/USD)</option>
+                      <option value="XAG/USD">SILVER (XAG/USD)</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label">Entry Price</label>
+                  <input type="number" class="form-control" id="entryPrice" step="0.00001" required />
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label">Take Profit</label>
+                  <input type="number" class="form-control" id="exitPrice" step="0.00001" required />
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label">Stop Loss</label>
+                  <input type="number" class="form-control" id="stopLoss" step="0.00001" required />
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label">Position Size (Lots)</label>
+                  <input type="number" class="form-control" id="positionSize" step="0.01" required />
+                  <small class="form-text text-muted" id="positionSizeHint">1.0 = 1 standard lot (100,000 units)</small>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label">Leverage</label>
+                  <select class="form-select" id="leverage" required>
+                    <option value="1:1">1:1</option>
+                    <option value="1:2">1:2</option>
+                    <option value="1:5">1:5</option>
+                    <option value="1:10">1:10</option>
+                    <option value="1:20">1:20</option>
+                    <option value="1:30">1:30</option>
+                    <option value="1:50">1:50</option>
+                    <option value="1:100">1:100</option>
+                    <option value="1:200">1:200</option>
+                    <option value="1:500">1:500</option>
+                    <option value="1:1000">1:1000</option>
+                  </select>
+                </div>
+
+                <div id="errors"></div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analysis Section -->
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header bg-success text-white">
+              <h4 class="mb-0">Trade Analysis</h4>
+            </div>
+            <div class="card-body">
+              <div id="analysisResult">
+                <div class="alert alert-info">Enter trade parameters to see analysis</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Risk Assessment Card -->
+          <div class="card">
+            <div class="card-header bg-warning">
+              <h4 class="mb-0">Risk Assessment</h4>
+            </div>
+            <div class="card-body" id="riskAssessment">
+              <!-- Risk details will be populated by JavaScript -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+      const FOREX_STANDARDS = {
+        STANDARD_LOT: 100000,
+        MINI_LOT: 10000,
+        MICRO_LOT: 1000,
+
+        // Standard contract sizes
+        CONTRACT_SIZE: {
+          "XAU/USD": 100, // 100 oz per lot
+          "XAG/USD": 5000, // 5000 oz per lot
+          DEFAULT: 100000, // Standard forex lot
+        },
+
+        // Minimum distances in pips
+        MIN_STOP_DISTANCE: {
+          "XAU/USD": 50, // 50 cents
+          "XAG/USD": 3, // 3 cents
+          DEFAULT: 2, // 2 pips for forex
+        },
+
+        // Maximum leverage by instrument type
+        MAX_LEVERAGE: {
+          FOREX: 1000, // 1:1000
+          METALS: 200, // 1:200
+          DEFAULT: 100, // 1:100
+        },
+      };
+      // Add this constant table at the top of your script
+      const PIP_VALUE_TABLE = {
+        AUDCAD: 6.94888,
+        AUDCHF: 10.97081,
+        AUDJPY: 6.31046,
+        AUDNZD: 5.6026,
+        AUDSGD: 7.30514,
+        AUDUSD: 10,
+        CADCHF: 10.97081,
+        CADJPY: 6.31046,
+        CHFJPY: 6.31046,
+        CHFSGD: 7.30514,
+        EURAUD: 6.2048,
+        EURCAD: 6.94888,
+        EURCHF: 10.97081,
+        EURCZK: 0.4102,
+        EURGBP: 12.3426,
+        EURHUF: 2.48863,
+        EURJPY: 6.31046,
+        EURMXN: 0.49035,
+        EURNOK: 0.87646,
+        EURNZD: 5.6026,
+        EURPLN: 2.41086,
+        EURSEK: 0.89565,
+        EURSGD: 7.30514,
+        EURTRY: 0.28295,
+        EURUSD: 10,
+        EURZAR: 0.52839,
+        GBPAUD: 6.2048,
+        GBPCAD: 6.94888,
+        GBPCHF: 10.97081,
+        GBPJPY: 6.31046,
+        GBPMXN: 0.49035,
+        GBPNOK: 0.87646,
+        GBPNZD: 5.6026,
+        GBPSEK: 0.89565,
+        GBPSGD: 7.30514,
+        GBPTRY: 0.28295,
+        GBPUSD: 10,
+        NOKJPY: 6.31046,
+        NOKSEK: 0.89565,
+        NZDCAD: 6.94888,
+        NZDCHF: 10.97081,
+        NZDJPY: 6.31046,
+        NZDUSD: 10,
+        SEKJPY: 6.31046,
+        SGDJPY: 6.31046,
+        USDCAD: 6.94888,
+        USDCHF: 10.97081,
+        USDCNH: 1.35973,
+        USDCZK: 0.4102,
+        USDHUF: 2.48863,
+        USDJPY: 6.31046,
+        USDMXN: 0.49035,
+        USDNOK: 0.87646,
+        USDPLN: 2.41086,
+        USDRUB: 0.101,
+        USDSEK: 0.89565,
+        USDSGD: 7.30514,
+        USDTHB: 0.28844,
+        USDTRY: 0.28295,
+        USDZAR: 0.52839,
+        XAGAUD: 620.48,
+        XAGEUR: 1030.44,
+        XAGUSD: 1000,
+        XAUAUD: 620.48,
+        XAUCHF: 1097.08067,
+        XAUEUR: 1030.44,
+        XAUGBP: 1234.26,
+        XAUJPY: 6.31046,
+        XAUUSD: 1000,
+        XPDUSD: 1000,
+        XPTUSD: 1000,
+        ZARJPY: 6.31046,
+      };
+
+      class TradeCalculator {
+        constructor() {
+          this.form = document.getElementById("tradeForm");
+          this.tradingPair = document.getElementById("tradingPair");
+          this.entryPrice = document.getElementById("entryPrice");
+          this.exitPrice = document.getElementById("exitPrice");
+          this.stopLoss = document.getElementById("stopLoss");
+          this.positionSize = document.getElementById("positionSize");
+          this.leverage = document.getElementById("leverage");
+
+          this.setupEventListeners();
+        }
+
+        setupEventListeners() {
+          ["tradingPair", "entryPrice", "exitPrice", "stopLoss", "positionSize", "leverage"].forEach((id) => {
+            document.getElementById(id)?.addEventListener("input", () => this.calculate());
+          });
+        }
+
+        calculate() {
+          const values = {
+            pair: this.tradingPair.value,
+            entry: parseFloat(this.entryPrice.value),
+            exit: parseFloat(this.exitPrice.value),
+            stop: parseFloat(this.stopLoss.value),
+            lots: parseFloat(this.positionSize.value),
+            leverage: parseInt(this.leverage.value.split(":")[1]),
+          };
+
+          if (!this.validateInputs(values)) return;
+
+          const direction = values.exit > values.entry ? "LONG" : "SHORT";
+          const pairKey = values.pair.replace("/", "");
+          const pipValue = PIP_VALUE_TABLE[pairKey] || 10;
+
+          const standardLot = 100000;
+          const positionValue = values.lots * standardLot;
+          const requiredMargin = positionValue / values.leverage;
+
+          const pipMultiplier = values.pair.includes("JPY") ? 0.01 : 0.0001;
+          const profitPips = Math.abs(values.exit - values.entry) / pipMultiplier;
+          const lossPips = Math.abs(values.stop - values.entry) / pipMultiplier;
+
+          const lotPipValue = pipValue * values.lots;
+          const potentialProfit = profitPips * lotPipValue;
+          const potentialLoss = lossPips * lotPipValue;
+
+          this.displayResults({
+            direction,
+            positionValue,
+            requiredMargin,
+            profitPips,
+            lossPips,
+            potentialProfit,
+            potentialLoss,
+            pipValue: lotPipValue,
+            leverage: values.leverage,
+          });
+        }
+
+        validateInputs(values) {
+          const errors = [];
+
+          if (isNaN(values.entry) || values.entry <= 0) errors.push("Invalid entry price");
+          if (isNaN(values.exit) || values.exit <= 0) errors.push("Invalid take profit price");
+          if (isNaN(values.stop) || values.stop <= 0) errors.push("Invalid stop loss price");
+          if (isNaN(values.lots) || values.lots <= 0) errors.push("Invalid position size");
+
+          const errorDiv = document.getElementById("errors");
+          if (errors.length > 0) {
+            errorDiv.innerHTML = errors.map((error) => `<div class="alert alert-danger">${error}</div>`).join("");
+            return false;
+          }
+
+          errorDiv.innerHTML = "";
+          return true;
+        }
+
+        displayResults(results) {
+          const analysisDiv = document.getElementById("analysisResult");
+          analysisDiv.innerHTML = `
+            <ul class="list-group">
+              <li class="list-group-item">
+                Direction: <span class="result-value ${
+                  results.direction === "LONG" ? "text-success" : "text-danger"
+                }">${results.direction}</span>
+              </li>
+              <li class="list-group-item">
+                Position Value: <span class="result-value">$${results.positionValue.toLocaleString()}</span>
+              </li>
+              <li class="list-group-item">
+                Required Margin: <span class="result-value">$${results.requiredMargin.toLocaleString()}</span>
+              </li>
+              <li class="list-group-item">
+                Pip Value: <span class="result-value">$${results.pipValue.toFixed(2)}</span>
+              </li>
+              <li class="list-group-item">
+                Potential Profit: <span class="result-value text-success">
+                  ${results.profitPips.toFixed(1)} pips ($${results.potentialProfit.toFixed(2)})
+                </span>
+              </li>
+              <li class="list-group-item">
+                Potential Loss: <span class="result-value text-danger">
+                  ${results.lossPips.toFixed(1)} pips ($${results.potentialLoss.toFixed(2)})
+                </span>
+              </li>
+              <li class="list-group-item">
+                Risk/Reward Ratio: <span class="result-value">
+                  ${(results.potentialProfit / results.potentialLoss).toFixed(2)}
+                </span>
+              </li>
+              <li class="list-group-item">
+                Leverage Used: <span class="result-value">${results.leverage}:1</span>
+              </li>
+            </ul>
+          `;
+
+          const riskRatio = results.potentialProfit / results.potentialLoss;
+          const riskAssessmentDiv = document.getElementById("riskAssessment");
+          riskAssessmentDiv.innerHTML = `
+            <ul class="list-group">
+              <li class="list-group-item ${riskRatio >= 2 ? "text-success" : "text-danger"}">
+                Risk/Reward: ${riskRatio >= 2 ? "✓ Good" : "⚠ Poor"} (${riskRatio.toFixed(2)}:1)
+              </li>
+              <li class="list-group-item">
+                Position Risk: ${((results.potentialLoss / results.requiredMargin) * 100).toFixed(2)}% of margin
+              </li>
+            </ul>
+          `;
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const calculator = new TradeCalculator();
+      });
+    </script>
+  </body>
+</html>
